@@ -79,7 +79,7 @@ export function useVoiceSocket() {
 
     const url = new URL(VOICE_SERVER_URL);
     if (deviceId) url.searchParams.set('device_id', deviceId);
-    url.searchParams.set('device_type', 'browser_audio');
+    url.searchParams.set('device_type', 'audio');
 
     try {
       const ws = new WebSocket(url.toString());
