@@ -1,15 +1,27 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { HomePage } from '@/pages/HomePage';
 import { ChatPage } from '@/pages/ChatPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { BottomNav } from '@/components/BottomNav';
 import { Sparkles } from '@/components/Sparkles';
+import { ParentOverlay } from '@/components/ParentOverlay';
+import { useParentPresence } from '@/hooks/useParentPresence';
 import type { Character } from '@/types';
+import { characters } from '@/data/characters';
 import './App.css';
 
 function App() {
+  const [screen, setScreen] = useState<'pietro' | 'home' | 'chat' | 'settings'>('pietro');
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
-  const [screen, setScreen] = useState<'home' | 'chat' | 'settings'>('home');
+  const [parentOverlay, setParentOverlay] = useState<'greeting' | 'checkin' | 'lockout' | null>(null);
+
+  const { settings, startSession, getSessionTimeUsed, isWithinAllowedHours } = useParentPresence();
+  const pietro = characters.find(c => c.slug === 'pietro')!;
+
+  const goToHome = useCallback(() => {
+    setScreen('home');
+    setSelectedCharacter(null);
+  }, []);
 
   const handleSelectCharacter = useCallback((character: Character) => {
     setSelectedCharacter(character);
@@ -18,48 +30,126 @@ function App() {
 
   const handleBack = useCallback(() => {
     setScreen('home');
+    setSelectedCharacter(null);
   }, []);
 
-  const handleOpenSettings = useCallback(() => {
-    setScreen('settings');
-  }, []);
+  // Show parent greeting when arriving at home screen
+  useEffect(() => {
+    if (screen === 'home' && settings.requireGreeting && settings.persona !== 'none') {
+      const hasGreeted = sessionStorage.getItem('casa_greeted');
+      if (!hasGreeted) {
+        sessionStorage.setItem('casa_greeted', 'true');
+        startSession();
+        setParentOverlay('greeting');
+      }
+    }
+  }, [screen, settings.requireGreeting, settings.persona, startSession]);
+
+  // Periodic check-ins
+  useEffect(() => {
+    if (settings.checkInInterval <= 0 || settings.persona === 'none') return;
+
+    const interval = setInterval(() => {
+      if (screen === 'chat' || screen === 'home') {
+        setParentOverlay('checkin');
+      }
+    }, settings.checkInInterval * 60000);
+
+    return () => clearInterval(interval);
+  }, [settings.checkInInterval, settings.persona, screen]);
+
+  // Session time lockout
+  useEffect(() => {
+    if (settings.maxSessionMinutes <= 0 || settings.persona === 'none') return;
+
+    const check = setInterval(() => {
+      const used = getSessionTimeUsed();
+      if (used >= settings.maxSessionMinutes && (screen === 'chat' || screen === 'home')) {
+        setParentOverlay('lockout');
+      }
+    }, 30000); // Check every 30 seconds
+
+    return () => clearInterval(check);
+  }, [settings.maxSessionMinutes, settings.persona, screen, getSessionTimeUsed]);
+
+  // Allowed hours lockout
+  useEffect(() => {
+    if (settings.persona === 'none') return;
+
+    const check = setInterval(() => {
+      if (!isWithinAllowedHours() && (screen === 'chat' || screen === 'home')) {
+        setParentOverlay('lockout');
+      }
+    }, 60000); // Check every minute
+
+    return () => clearInterval(check);
+  }, [settings.persona, screen, isWithinAllowedHours]);
+
+  const showNav = screen === 'home' || screen === 'settings';
+  const activeTab = screen === 'settings' ? 'settings' : 'home';
 
   return (
     <div className="min-h-screen" style={{ background: 'linear-gradient(180deg, #1e293b 0%, #141c2e 50%, #0f172a 100%)' }}>
-      {/* Desktop backdrop */}
       <div className="hidden md:block fixed inset-0" style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #1e293b 50%, #0f172a 100%)' }}>
         <div className="absolute inset-0 opacity-30">
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl" />
-          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl" />
+          <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full blur-3xl" style={{ background: 'rgba(212,168,83,0.08)' }} />
+          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full blur-3xl" style={{ background: 'rgba(139,92,246,0.06)' }} />
         </div>
       </div>
 
-      {/* Mobile container */}
       <div className="mobile-container relative z-10">
-        <Sparkles count={15} />
+        <Sparkles count={12} />
 
+        {/* PIETRO: Name capture → spiel → chat */}
+        {screen === 'pietro' && (
+          <ChatPage
+            character={pietro}
+            onBack={goToHome}
+            onOpenSettings={() => setScreen('settings')}
+          />
+        )}
+
+        {/* HOME: Character selection */}
         {screen === 'home' && (
           <HomePage onSelectCharacter={handleSelectCharacter} />
         )}
 
+        {/* CHAT: With companion */}
         {screen === 'chat' && selectedCharacter && (
           <ChatPage
             character={selectedCharacter}
             onBack={handleBack}
-            onOpenSettings={handleOpenSettings}
+            onOpenSettings={() => setScreen('settings')}
           />
         )}
 
+        {/* SETTINGS */}
         {screen === 'settings' && (
           <SettingsPage onBack={() => setScreen(selectedCharacter ? 'chat' : 'home')} />
         )}
 
-        {/* Show nav on home and settings, hide during chat */}
-        {screen !== 'chat' && (
+        {/* Bottom nav - only on home/settings */}
+        {showNav && (
           <BottomNav
-            active={screen}
-            onNavigate={setScreen}
-            hasChat={!!selectedCharacter}
+            active={activeTab}
+            onNavigate={(s) => setScreen(s === 'settings' ? 'settings' : 'home')}
+            hasChat={false}
+          />
+        )}
+
+        {/* PARENT OVERLAY: Greeting / Check-in / Lockout */}
+        {parentOverlay && (
+          <ParentOverlay
+            type={parentOverlay}
+            onDismiss={() => {
+              if (parentOverlay === 'lockout') {
+                // Lockout sends kid back to home and clears session
+                setScreen('home');
+                setSelectedCharacter(null);
+                localStorage.removeItem('casa_session_start');
+              }
+              setParentOverlay(null);
+            }}
           />
         )}
       </div>

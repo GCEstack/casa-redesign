@@ -1,12 +1,13 @@
-# Casa Redesign Frontend
+# Casa Companion Frontend
 
-A fresh mobile-first React + Vite frontend for **Casa Companion**. It connects to the **Casa Voice V3 Dual** backend for real-time voice conversations with characters.
+A polished mobile-first React + Vite frontend for **Casa Companion**. It connects to the **Casa Voice V3 Dual** backend for real-time voice conversations with characters.
 
 ## What this repo is
 
-- **Frontend only** — React, TypeScript, Tailwind CSS, shadcn/ui components
+- **Frontend only** — React 19, TypeScript, Tailwind CSS, shadcn/ui components
 - **Voice-first chat** — tap a character, talk or type, and Casa responds
 - **Designed for phones** — PWA-style mobile layout with desktop backdrop
+- **Idle + speaking videos** — each character shows an idle loop and switches to a speaking clip while the character talks
 
 ## What this repo is NOT
 
@@ -69,11 +70,11 @@ The frontend speaks the **Casa Voice V3 Dual** WebSocket protocol:
   - `config_change` → character/mode changes
   - `command` → interrupt, reset, etc.
 
-## Differences from the old voice agent
+## Character assets
 
-This frontend was previously wired to a different voice endpoint. It has been updated to use the local `voice/v3-dual` backend and protocol.
+Generated idle/speaking videos live in `public/videos/` as `{character}_idle.mp4` and `{character}_speaking.mp4`. Character portraits live in `public/characters/`. The `src/data/characterVideos.ts` map wires each character slug to its video pair, and `src/data/characters.ts` injects `videoSrc` / `speakingVideo` from that map at runtime.
 
-## Known integration notes
+## Notes
 
-- Character and mode names flow through as strings. Some frontend `ConversationMode` values may not map 1:1 to backend voice tags yet — that mapping lives in `CharacterVoiceRouter` in the backend.
+- Character and mode names flow through as strings. Backend voice/vibe routing lives in `CharacterVoiceRouter` in the voice server.
 - For local development, use `ws://localhost:8080`. For HTTPS deployments, the voice backend must also be HTTPS (`wss://`).

@@ -1,8 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { VoiceState, ChatMessage, ConversationMode } from '@/types';
 
-const VOICE_SERVER_URL = import.meta.env.VITE_VOICE_SERVER_URL || 'ws://localhost:8080/ws/voice';
-const VOICE_SERVER_TOKEN = import.meta.env.VITE_VOICE_SERVER_API_KEY || '';
+const VOICE_SERVER_URL = import.meta.env.VITE_VOICE_SERVER_URL || 'wss://casa-voice-agent.fly.dev/ws/voice';
 
 export function useVoiceSocket() {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
@@ -18,7 +17,6 @@ export function useVoiceSocket() {
   const isPlayingRef = useRef(false);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
-  const isRecordingRef = useRef(false);
   const maxReconnectAttempts = 5;
 
   // Initialize AudioContext (must be after user gesture)
@@ -81,8 +79,7 @@ export function useVoiceSocket() {
 
     const url = new URL(VOICE_SERVER_URL);
     if (deviceId) url.searchParams.set('device_id', deviceId);
-    url.searchParams.set('device_type', 'audio');
-    if (VOICE_SERVER_TOKEN) url.searchParams.set('token', VOICE_SERVER_TOKEN);
+    url.searchParams.set('device_type', 'browser_audio');
 
     try {
       const ws = new WebSocket(url.toString());
@@ -150,15 +147,9 @@ export function useVoiceSocket() {
         break;
 
       case 'transcript':
-        // User transcript from server
-        if (msg.text) {
+        if (msg.role === 'user') {
           addMessage('user', msg.text);
-        }
-        break;
-
-      case 'assistant_text':
-        // Assistant text from server
-        if (msg.text) {
+        } else if (msg.role === 'assistant') {
           addMessage('character', msg.text);
         }
         break;
@@ -264,16 +255,18 @@ export function useVoiceSocket() {
       const workletNode = new AudioWorkletNode(ctx, 'pcm-processor');
       workletNodeRef.current = workletNode;
 
-      // Send PCM data to WebSocket while recording
-      isRecordingRef.current = true;
+      // Send PCM data to WebSocket
       workletNode.port.onmessage = (event) => {
-        if (wsRef.current?.readyState === WebSocket.OPEN && isRecordingRef.current) {
+        if (wsRef.current?.readyState === WebSocket.OPEN && voiceState === 'listening') {
           wsRef.current.send(event.data);
         }
       };
 
       source.connect(workletNode);
       workletNode.connect(ctx.destination);
+
+      // Tell server we're ready to listen
+      sendCommand('start_listening');
 
     } catch (err) {
       console.error('[VoiceSocket] Start listening failed:', err);
@@ -286,12 +279,10 @@ export function useVoiceSocket() {
       setError(msg);
       setVoiceState('error');
     }
-  }, [initAudio, connect]);
+  }, [initAudio, connect, sendCommand, voiceState]);
 
   // Stop listening
   const stopListening = useCallback(() => {
-    isRecordingRef.current = false;
-
     // Stop mic stream
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach(track => track.stop());
@@ -303,24 +294,32 @@ export function useVoiceSocket() {
       workletNodeRef.current.disconnect();
       workletNodeRef.current = null;
     }
-  }, []);
+
+    // Tell server to stop
+    sendCommand('stop_listening');
+  }, [sendCommand]);
 
   // Send text message (for typing fallback)
   const sendTextMessage = useCallback((text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!text.trim()) return;
 
-    // Add to local messages immediately
-    addMessage('user', trimmed);
+    // Add to local messages
+    addMessage('user', text.trim());
 
     // Send via WebSocket if connected
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'text_input', text: trimmed }));
+      // If server supports text messages, send as command
+      sendCommand(`text:${text.trim()}`);
     } else {
-      setError('Not connected to voice server. Type again after connecting.');
-      setVoiceState('error');
+      // Fallback: simulate response for demo
+      setVoiceState('processing');
+      setTimeout(() => {
+        setVoiceState('speaking');
+        addMessage('character', `That's wonderful! Tell me more about that!`);
+        setTimeout(() => setVoiceState('idle'), 2000);
+      }, 1000);
     }
-  }, [addMessage]);
+  }, [addMessage, sendCommand]);
 
   // Interrupt (barge-in)
   const interrupt = useCallback(() => {
@@ -341,7 +340,6 @@ export function useVoiceSocket() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      isRecordingRef.current = false;
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (mediaStreamRef.current) mediaStreamRef.current.getTracks().forEach(t => t.stop());
       if (workletNodeRef.current) workletNodeRef.current.disconnect();

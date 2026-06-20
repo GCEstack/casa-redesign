@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { modes } from '@/data/characters';
+import { allModes as modes } from '@/data/modes';
 import { cn } from '@/lib/utils';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -47,18 +47,18 @@ export function ModeCarousel({ selectedMode, onSelect }: Props) {
       >
         {modes.map((mode) => (
           <button
-            key={mode.id}
-            onClick={() => onSelect(mode.id)}
+            key={mode.slug}
+            onClick={() => onSelect(mode.slug)}
             className={cn(
               'flex-shrink-0 snap-start flex flex-col items-center justify-center',
               'w-[72px] h-[80px] rounded-xl border transition-all duration-200',
               'active:scale-95',
-              selectedMode === mode.id
+              selectedMode === mode.slug
                 ? 'border-amber-500/60 bg-amber-500/10 shadow-lg shadow-amber-500/10'
                 : 'border-white/10 bg-white/5 hover:border-white/20',
             )}
           >
-            <span className="text-2xl mb-1">{mode.icon}</span>
+            <span className="text-2xl mb-1">✨</span>
             <span className="text-[9px] text-white/70 font-medium text-center leading-tight px-1">
               {mode.label}
             </span>
