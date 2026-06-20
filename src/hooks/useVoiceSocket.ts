@@ -12,7 +12,9 @@ export function useVoiceSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const audioWorkletLoadedRef = useRef(false);
   const playbackQueueRef = useRef<Float32Array[]>([]);
   const isPlayingRef = useRef(false);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -228,30 +230,42 @@ export function useVoiceSocket() {
       // Set up AudioWorklet for PCM capture
       const ctx = audioContextRef.current!;
 
-      // Inline AudioWorklet processor (avoids separate file)
-      const workletCode = `
-        class PCMProcessor extends AudioWorkletProcessor {
-          process(inputs, outputs, parameters) {
-            const input = inputs[0];
-            if (input && input[0]) {
-              const int16Data = new Int16Array(input[0].length);
-              for (let i = 0; i < input[0].length; i++) {
-                int16Data[i] = Math.max(-32768, Math.min(32767, input[0][i] * 32768));
+      // Only load the AudioWorklet module once per AudioContext to avoid
+      // "pcm-processor already registered" errors on repeated listen cycles.
+      if (!audioWorkletLoadedRef.current) {
+        // Inline AudioWorklet processor (avoids separate file)
+        const workletCode = `
+          class PCMProcessor extends AudioWorkletProcessor {
+            process(inputs, outputs, parameters) {
+              const input = inputs[0];
+              if (input && input[0]) {
+                const int16Data = new Int16Array(input[0].length);
+                for (let i = 0; i < input[0].length; i++) {
+                  int16Data[i] = Math.max(-32768, Math.min(32767, input[0][i] * 32768));
+                }
+                this.port.postMessage(int16Data.buffer, [int16Data.buffer]);
               }
-              this.port.postMessage(int16Data.buffer, [int16Data.buffer]);
+              return true;
             }
-            return true;
           }
-        }
-        registerProcessor('pcm-processor', PCMProcessor);
-      `;
+          registerProcessor('pcm-processor', PCMProcessor);
+        `;
 
-      const blob = new Blob([workletCode], { type: 'application/javascript' });
-      const workletUrl = URL.createObjectURL(blob);
-      await ctx.audioWorklet.addModule(workletUrl);
-      URL.revokeObjectURL(workletUrl);
+        const blob = new Blob([workletCode], { type: 'application/javascript' });
+        const workletUrl = URL.createObjectURL(blob);
+        try {
+          await ctx.audioWorklet.addModule(workletUrl);
+          audioWorkletLoadedRef.current = true;
+        } catch (e) {
+          // If another instance already registered it, we can still use the existing processor.
+          console.warn('[VoiceSocket] AudioWorklet addModule warning:', e);
+          audioWorkletLoadedRef.current = true;
+        }
+        URL.revokeObjectURL(workletUrl);
+      }
 
       const source = ctx.createMediaStreamSource(stream);
+      mediaStreamSourceRef.current = source;
       const workletNode = new AudioWorkletNode(ctx, 'pcm-processor');
       workletNodeRef.current = workletNode;
 
@@ -262,8 +276,8 @@ export function useVoiceSocket() {
         }
       };
 
+      // Connect mic source -> worklet (capture only, do NOT connect to destination)
       source.connect(workletNode);
-      workletNode.connect(ctx.destination);
 
       // Tell server we're ready to listen
       sendCommand('start_listening');
@@ -283,16 +297,31 @@ export function useVoiceSocket() {
 
   // Stop listening
   const stopListening = useCallback(() => {
-    // Stop mic stream
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop());
-      mediaStreamRef.current = null;
+    // Disconnect source from worklet first so the mic graph is torn down
+    if (mediaStreamSourceRef.current) {
+      try {
+        mediaStreamSourceRef.current.disconnect();
+      } catch (e) {
+        // ignore
+      }
+      mediaStreamSourceRef.current = null;
     }
 
     // Disconnect worklet
     if (workletNodeRef.current) {
-      workletNodeRef.current.disconnect();
+      try {
+        workletNodeRef.current.disconnect();
+        workletNodeRef.current.port.onmessage = null;
+      } catch (e) {
+        // ignore
+      }
       workletNodeRef.current = null;
+    }
+
+    // Stop mic stream tracks
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current = null;
     }
 
     // Tell server to stop
@@ -341,8 +370,13 @@ export function useVoiceSocket() {
   useEffect(() => {
     return () => {
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      if (mediaStreamSourceRef.current) {
+        try { mediaStreamSourceRef.current.disconnect(); } catch (e) { /* ignore */ }
+      }
+      if (workletNodeRef.current) {
+        try { workletNodeRef.current.disconnect(); } catch (e) { /* ignore */ }
+      }
       if (mediaStreamRef.current) mediaStreamRef.current.getTracks().forEach(t => t.stop());
-      if (workletNodeRef.current) workletNodeRef.current.disconnect();
       if (audioContextRef.current) audioContextRef.current.close();
       if (wsRef.current) wsRef.current.close();
     };
