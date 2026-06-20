@@ -60,12 +60,19 @@ export function useVoiceSocket(characterSlug?: string) {
   // Play audio from PCM Float32Array
   const playAudio = useCallback((pcmData: Float32Array) => {
     const ctx = audioContextRef.current;
-    if (!ctx) return;
+    if (!ctx) {
+      console.warn('[VoiceSocket] No AudioContext for playback');
+      return;
+    }
 
     // Browsers suspend audio contexts until a user gesture; resume before playback.
     if (ctx.state === 'suspended') {
-      ctx.resume().catch((e) => console.warn('[VoiceSocket] AudioContext resume failed:', e));
+      ctx.resume()
+        .then(() => console.log('[VoiceSocket] AudioContext resumed'))
+        .catch((e) => console.warn('[VoiceSocket] AudioContext resume failed:', e));
     }
+
+    console.log('[VoiceSocket] Playing audio chunk:', pcmData.length, 'samples');
 
     const buffer = ctx.createBuffer(1, pcmData.length, 16000);
     // @ts-expect-error - Float32Array type variance in Web Audio API
@@ -136,6 +143,7 @@ export function useVoiceSocket(characterSlug?: string) {
           }
         } else if (event.data instanceof ArrayBuffer) {
           // Binary audio data
+          console.log('[VoiceSocket] Received binary audio:', event.data.byteLength, 'bytes');
           audioReceivedForTurnRef.current = true;
           if (fallbackTimerRef.current) {
             clearTimeout(fallbackTimerRef.current);
@@ -185,6 +193,10 @@ export function useVoiceSocket(characterSlug?: string) {
         if (msg.state === 'speaking') {
           audioReceivedForTurnRef.current = false;
           pendingTtsTextRef.current = null;
+          // Make sure a fresh audio turn can start even if a previous bufferSource
+          // never fired its onended event.
+          isPlayingRef.current = false;
+          playbackQueueRef.current = [];
           if (fallbackTimerRef.current) {
             clearTimeout(fallbackTimerRef.current);
             fallbackTimerRef.current = null;
