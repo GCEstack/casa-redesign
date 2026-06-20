@@ -62,6 +62,11 @@ export function useVoiceSocket(characterSlug?: string) {
     const ctx = audioContextRef.current;
     if (!ctx) return;
 
+    // Browsers suspend audio contexts until a user gesture; resume before playback.
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch((e) => console.warn('[VoiceSocket] AudioContext resume failed:', e));
+    }
+
     const buffer = ctx.createBuffer(1, pcmData.length, 16000);
     // @ts-expect-error - Float32Array type variance in Web Audio API
     buffer.copyToChannel(pcmData, 0);
