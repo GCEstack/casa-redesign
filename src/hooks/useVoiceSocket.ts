@@ -5,9 +5,15 @@ const VOICE_SERVER_URL = import.meta.env.VITE_VOICE_SERVER_URL || 'wss://casa-vo
 
 export function useVoiceSocket() {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
+  const voiceStateRef = useRef<VoiceState>('idle');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+
+  // Keep a live ref so AudioWorklet callbacks see the current state
+  useEffect(() => {
+    voiceStateRef.current = voiceState;
+  }, [voiceState]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -269,9 +275,9 @@ export function useVoiceSocket() {
       const workletNode = new AudioWorkletNode(ctx, 'pcm-processor');
       workletNodeRef.current = workletNode;
 
-      // Send PCM data to WebSocket
+      // Send PCM data to WebSocket (use ref to avoid stale closure)
       workletNode.port.onmessage = (event) => {
-        if (wsRef.current?.readyState === WebSocket.OPEN && voiceState === 'listening') {
+        if (wsRef.current?.readyState === WebSocket.OPEN && voiceStateRef.current === 'listening') {
           wsRef.current.send(event.data);
         }
       };
