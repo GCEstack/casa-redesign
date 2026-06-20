@@ -16,7 +16,7 @@ interface Props {
 
 export function ChatPage({ character, onBack, onOpenSettings }: Props) {
   const { voiceState, messages, error, startListening, stopListening, sendTextMessage, clearError } =
-    useVoiceSocket();
+    useVoiceSocket(character.slug);
   const { name: kidName, isFirstVisit, continuousSpeech, setName, toggleContinuous } = useKidProfile();
   const [mode, setMode] = useState<ConversationMode>('introduction');
   const [showTextInput, setShowTextInput] = useState(false);

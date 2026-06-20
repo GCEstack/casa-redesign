@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { VoiceState, ChatMessage, ConversationMode } from '@/types';
+import { characterVoices, defaultVoice, getVoiceForCharacter } from '@/data/characterVoices';
 
 const VOICE_SERVER_URL = import.meta.env.VITE_VOICE_SERVER_URL || 'wss://casa-voice-agent.fly.dev/ws/voice';
 
-export function useVoiceSocket() {
+export function useVoiceSocket(characterSlug?: string) {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const voiceStateRef = useRef<VoiceState>('idle');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -26,6 +27,24 @@ export function useVoiceSocket() {
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 5;
+
+  // Browser TTS fallback when backend audio cannot be generated
+  const voiceConfig = characterVoices[characterSlug || ''] || defaultVoice;
+  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingTtsTextRef = useRef<string | null>(null);
+  const audioReceivedForTurnRef = useRef(false);
+
+  const speakWithBrowserTTS = useCallback((text: string) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voice = getVoiceForCharacter(voiceConfig);
+    if (voice) utterance.voice = voice;
+    utterance.pitch = voiceConfig.pitch;
+    utterance.rate = voiceConfig.rate;
+    utterance.lang = voiceConfig.lang;
+    window.speechSynthesis.speak(utterance);
+  }, [voiceConfig]);
 
   // Initialize AudioContext (must be after user gesture)
   const initAudio = useCallback(async () => {
@@ -112,6 +131,12 @@ export function useVoiceSocket() {
           }
         } else if (event.data instanceof ArrayBuffer) {
           // Binary audio data
+          audioReceivedForTurnRef.current = true;
+          if (fallbackTimerRef.current) {
+            clearTimeout(fallbackTimerRef.current);
+            fallbackTimerRef.current = null;
+          }
+          pendingTtsTextRef.current = null;
           const pcmData = pcmToFloat32(event.data);
           queueAudio(pcmData);
         }
@@ -152,13 +177,57 @@ export function useVoiceSocket() {
     switch (msg.type) {
       case 'state_change':
         setVoiceState(msg.state);
+        if (msg.state === 'speaking') {
+          audioReceivedForTurnRef.current = false;
+          pendingTtsTextRef.current = null;
+          if (fallbackTimerRef.current) {
+            clearTimeout(fallbackTimerRef.current);
+            fallbackTimerRef.current = null;
+          }
+        }
+        if (msg.state === 'idle') {
+          if (fallbackTimerRef.current) {
+            clearTimeout(fallbackTimerRef.current);
+            fallbackTimerRef.current = null;
+          }
+          pendingTtsTextRef.current = null;
+          audioReceivedForTurnRef.current = false;
+        }
         break;
 
       case 'transcript':
-        if (msg.role === 'user') {
-          addMessage('user', msg.text);
-        } else if (msg.role === 'assistant') {
-          addMessage('character', msg.text);
+        if (msg.text) {
+          const userMsg: ChatMessage = {
+            id: Date.now().toString() + Math.random().toString(36).slice(2),
+            role: 'user',
+            text: msg.text,
+            timestamp: Date.now(),
+          };
+          setMessages(prev => [...prev, userMsg]);
+        }
+        break;
+
+      case 'assistant_text':
+        if (msg.text) {
+          const charMsg: ChatMessage = {
+            id: Date.now().toString() + Math.random().toString(36).slice(2),
+            role: 'character',
+            text: msg.text,
+            timestamp: Date.now(),
+          };
+          setMessages(prev => [...prev, charMsg]);
+          // If the backend cannot stream audio, fall back to browser TTS so
+          // the kid still hears a response.
+          if (!audioReceivedForTurnRef.current) {
+            pendingTtsTextRef.current = msg.text;
+            if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+            fallbackTimerRef.current = setTimeout(() => {
+              if (!audioReceivedForTurnRef.current && pendingTtsTextRef.current) {
+                speakWithBrowserTTS(pendingTtsTextRef.current);
+                pendingTtsTextRef.current = null;
+              }
+            }, 1200);
+          }
         }
         break;
 
@@ -175,7 +244,7 @@ export function useVoiceSocket() {
       default:
         console.log('[VoiceSocket] Unknown message type:', msg.type);
     }
-  }, []);
+  }, [speakWithBrowserTTS]);
 
   // Add message to chat
   const addMessage = useCallback((role: 'user' | 'character', text: string) => {
@@ -343,8 +412,7 @@ export function useVoiceSocket() {
 
     // Send via WebSocket if connected
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      // If server supports text messages, send as command
-      sendCommand(`text:${text.trim()}`);
+      wsRef.current.send(JSON.stringify({ type: 'text_input', text: text.trim() }));
     } else {
       // Fallback: simulate response for demo
       setVoiceState('processing');
