@@ -31,24 +31,30 @@ export function CharacterAvatar({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [idleFailed, setIdleFailed] = useState(false);
   const [speakingFailed, setSpeakingFailed] = useState(false);
+  const [portraitFailed, setPortraitFailed] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
 
   const activeVideoSrc = isSpeaking
     ? character.speakingVideo || character.videoSrc
     : character.videoSrc;
 
+  // Reset per-state failure flags when the active source changes, so a failed
+  // idle video doesn't block the speaking video from trying.
+  useEffect(() => {
+    if (isSpeaking) setSpeakingFailed(false);
+    else setIdleFailed(false);
+  }, [activeVideoSrc, isSpeaking]);
+
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !activeVideoSrc) return;
+    if (!video || !activeVideoSrc || !autoPlay) return;
 
-    if (autoPlay) {
-      video.play()
-        .then(() => setIsPlaying(true))
-        .catch(() => {
-          if (isSpeaking) setSpeakingFailed(true);
-          else setIdleFailed(true);
-        });
-    }
+    video.play()
+      .then(() => setIsPlaying(true))
+      .catch(() => {
+        if (isSpeaking) setSpeakingFailed(true);
+        else setIdleFailed(true);
+      });
   }, [autoPlay, activeVideoSrc, isSpeaking]);
 
   const handleTap = () => {
@@ -69,6 +75,8 @@ export function CharacterAvatar({
   };
 
   const videoFailed = isSpeaking ? speakingFailed : idleFailed;
+  const showVideo = activeVideoSrc && !videoFailed;
+  const showPortrait = !showVideo && !portraitFailed;
   const animClass = isSpeaking ? 'avatar-talk' : isListening ? 'avatar-listen' : 'avatar-breathe';
   const shapeClass = shape === 'box' ? 'rounded-3xl' : 'rounded-full';
 
@@ -86,11 +94,12 @@ export function CharacterAvatar({
         boxShadow: isListening
           ? `0 0 30px ${character.accentColor}40`
           : `0 8px 32px ${character.accentColor}20`,
+        background: `linear-gradient(135deg, ${character.accentColor}60, ${character.accentColor}30)`,
       }}
       onClick={handleTap}
     >
       {/* Active video (idle or speaking) */}
-      {activeVideoSrc && !videoFailed && (
+      {showVideo && (
         <video
           ref={videoRef}
           key={activeVideoSrc}
@@ -108,23 +117,24 @@ export function CharacterAvatar({
       )}
 
       {/* Fallback to portrait */}
-      {(!activeVideoSrc || videoFailed) && (
+      {showPortrait && (
         <img
           src={character.portrait}
           alt={character.name}
           className="absolute inset-0 w-full h-full object-cover"
-          onError={(e) => {
-            const target = e.currentTarget;
-            target.style.display = 'none';
-            const parent = target.parentElement!;
-            parent.style.background = `linear-gradient(135deg, ${character.accentColor}60, ${character.accentColor}30)`;
-            parent.innerHTML = `<span style="color:white;font-weight:800;font-size:2rem;">${character.name[0]}</span>`;
-          }}
+          onError={() => setPortraitFailed(true)}
         />
       )}
 
+      {/* Final fallback: initial letter */}
+      {!showVideo && !showPortrait && (
+        <span className="text-white font-extrabold text-2xl select-none">
+          {character.name[0]}
+        </span>
+      )}
+
       {/* Tap to play indicator */}
-      {activeVideoSrc && !isPlaying && !videoFailed && (
+      {showVideo && !isPlaying && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/30">
           <span className="text-white text-xs font-bold">▶</span>
         </div>

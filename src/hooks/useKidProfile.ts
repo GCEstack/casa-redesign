@@ -11,7 +11,18 @@ interface KidProfile {
 function loadProfile(): KidProfile {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // One-time migration: earlier builds defaulted to continuous listening,
+      // which causes the session to restart after every response. Reset those
+      // profiles to turn-based once, then let the kid/parent toggle freely.
+      if (parsed.continuousSpeech === true && parsed._continuousReset !== true) {
+        parsed.continuousSpeech = false;
+        parsed._continuousReset = true;
+        saveProfile(parsed);
+      }
+      return parsed;
+    }
   } catch {}
   return { name: '', firstVisit: true, continuousSpeech: false };
 }

@@ -258,6 +258,10 @@ export function useVoiceSocket(characterSlug?: string) {
         console.log('[VoiceSocket] Config updated:', msg);
         break;
 
+      case 'interrupt_ack':
+        // Server confirmed an interrupt request; no UI action needed.
+        break;
+
       default:
         console.log('[VoiceSocket] Unknown message type:', msg.type);
     }
