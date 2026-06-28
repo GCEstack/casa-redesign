@@ -4,6 +4,30 @@ import { characterVoices, defaultVoice, getVoiceForCharacter } from '@/data/char
 
 const VOICE_SERVER_URL = import.meta.env.VITE_VOICE_SERVER_URL || 'wss://casa-voice-agent.fly.dev/ws/voice';
 
+function getOrCreateDeviceId(): string {
+  try {
+    const existing = sessionStorage.getItem('casa_device_id');
+    if (existing) return existing;
+    const id = crypto.randomUUID();
+    sessionStorage.setItem('casa_device_id', id);
+    return id;
+  } catch {
+    return `redesign-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+}
+
+function getOrCreateSessionId(): string {
+  try {
+    const existing = sessionStorage.getItem('casa_session_id');
+    if (existing) return existing;
+    const id = crypto.randomUUID();
+    sessionStorage.setItem('casa_session_id', id);
+    return id;
+  } catch {
+    return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+}
+
 export function useVoiceSocket(characterSlug?: string) {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const voiceStateRef = useRef<VoiceState>('idle');
@@ -117,8 +141,11 @@ export function useVoiceSocket(characterSlug?: string) {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     const url = new URL(VOICE_SERVER_URL);
-    if (deviceId) url.searchParams.set('device_id', deviceId);
     url.searchParams.set('device_type', 'audio');
+    url.searchParams.set('device_id', deviceId || getOrCreateDeviceId());
+    url.searchParams.set('session_id', getOrCreateSessionId());
+    const apiKey = import.meta.env.VITE_VOICE_SERVER_API_KEY;
+    if (apiKey) url.searchParams.set('token', apiKey);
 
     try {
       const ws = new WebSocket(url.toString());
