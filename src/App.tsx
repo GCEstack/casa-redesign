@@ -1,16 +1,18 @@
-import { useState, useCallback, useEffect } from 'react';
+import { Routes, Route } from 'react-router-dom';
 import { HomePage } from '@/pages/HomePage';
 import { ChatPage } from '@/pages/ChatPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { PairPage } from '@/pages/PairPage';
 import { BottomNav } from '@/components/BottomNav';
 import { Sparkles } from '@/components/Sparkles';
 import { ParentOverlay } from '@/components/ParentOverlay';
 import { useParentPresence } from '@/hooks/useParentPresence';
+import { useState, useCallback, useEffect } from 'react';
 import type { Character } from '@/types';
 import { characters } from '@/data/characters';
 import './App.css';
 
-function App() {
+function AppContent() {
   const [screen, setScreen] = useState<'pietro' | 'home' | 'chat' | 'settings'>('pietro');
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [parentOverlay, setParentOverlay] = useState<'greeting' | 'checkin' | 'lockout' | null>(null);
@@ -67,7 +69,7 @@ function App() {
       if (used >= settings.maxSessionMinutes && (screen === 'chat' || screen === 'home')) {
         setParentOverlay('lockout');
       }
-    }, 30000); // Check every 30 seconds
+    }, 30000);
 
     return () => clearInterval(check);
   }, [settings.maxSessionMinutes, settings.persona, screen, getSessionTimeUsed]);
@@ -80,7 +82,7 @@ function App() {
       if (!isWithinAllowedHours() && (screen === 'chat' || screen === 'home')) {
         setParentOverlay('lockout');
       }
-    }, 60000); // Check every minute
+    }, 60000);
 
     return () => clearInterval(check);
   }, [settings.persona, screen, isWithinAllowedHours]);
@@ -100,7 +102,6 @@ function App() {
       <div className="mobile-container relative z-10">
         <Sparkles count={12} />
 
-        {/* PIETRO: Name capture → spiel → chat */}
         {screen === 'pietro' && (
           <ChatPage
             character={pietro}
@@ -109,12 +110,10 @@ function App() {
           />
         )}
 
-        {/* HOME: Character selection */}
         {screen === 'home' && (
           <HomePage onSelectCharacter={handleSelectCharacter} />
         )}
 
-        {/* CHAT: With companion */}
         {screen === 'chat' && selectedCharacter && (
           <ChatPage
             character={selectedCharacter}
@@ -123,12 +122,10 @@ function App() {
           />
         )}
 
-        {/* SETTINGS */}
         {screen === 'settings' && (
           <SettingsPage onBack={() => setScreen(selectedCharacter ? 'chat' : 'home')} />
         )}
 
-        {/* Bottom nav - only on home/settings */}
         {showNav && (
           <BottomNav
             active={activeTab}
@@ -137,13 +134,11 @@ function App() {
           />
         )}
 
-        {/* PARENT OVERLAY: Greeting / Check-in / Lockout */}
         {parentOverlay && (
           <ParentOverlay
             type={parentOverlay}
             onDismiss={() => {
               if (parentOverlay === 'lockout') {
-                // Lockout sends kid back to home and clears session
                 setScreen('home');
                 setSelectedCharacter(null);
                 localStorage.removeItem('casa_session_start');
@@ -154,6 +149,15 @@ function App() {
         )}
       </div>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/pair" element={<PairPage />} />
+      <Route path="*" element={<AppContent />} />
+    </Routes>
   );
 }
 
