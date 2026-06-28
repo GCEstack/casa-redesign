@@ -1,12 +1,8 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { characters } from '@/data/characters';
 import { CharacterCard } from '@/components/CharacterCard';
-import type { Character } from '@/types';
 import { Search, Sparkles } from 'lucide-react';
-
-interface Props {
-  onSelectCharacter: (character: Character) => void;
-}
 
 // Creative category names
 const categoryLabels: Record<string, string> = {
@@ -17,7 +13,8 @@ const categoryLabels: Record<string, string> = {
 
 const categoryOrder = ['animal', 'person', 'object'];
 
-export function HomePage({ onSelectCharacter }: Props) {
+export function HomePage() {
+  const navigate = useNavigate();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -70,7 +67,7 @@ export function HomePage({ onSelectCharacter }: Props) {
         {!searchQuery && selectedCategory === 'all' && pietro && (
           <section className="animate-fade-in-up">
             <button
-              onClick={() => onSelectCharacter(pietro)}
+              onClick={() => navigate(`/chat/${pietro.slug}`)}
               className="w-full rounded-2xl border border-amber-500/20 p-5 flex items-center gap-4 text-left active:scale-[0.98] transition-transform"
               style={{ background: `linear-gradient(90deg, ${pietro.accentColor}15, transparent)` }}
             >
@@ -118,7 +115,7 @@ export function HomePage({ onSelectCharacter }: Props) {
             <div className="grid grid-cols-2 gap-4">
               {filteredCharacters.map((character, i) => (
                 <div key={character.slug} className="animate-fade-in-up" style={{ animationDelay: `${i * 30}ms` }}>
-                  <CharacterCard character={character} onClick={() => onSelectCharacter(character)} />
+                  <CharacterCard character={character} onClick={() => navigate(`/chat/${character.slug}`)} />
                 </div>
               ))}
             </div>

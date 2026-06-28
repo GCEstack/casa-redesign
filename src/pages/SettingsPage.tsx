@@ -1,13 +1,11 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useParentalControl } from '@/hooks/useParentalControl';
 import { ArrowLeft, Lock, Mic, Volume2, Bell, Clock, Trash2, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-interface Props {
-  onBack: () => void;
-}
-
-export function SettingsPage({ onBack }: Props) {
+export function SettingsPage() {
+  const navigate = useNavigate();
   const {
     settings,
     isAuthenticated,
@@ -67,7 +65,7 @@ export function SettingsPage({ onBack }: Props) {
           </button>
 
           <button
-            onClick={onBack}
+            onClick={() => navigate('/home')}
             className="w-full mt-3 text-white/30 text-sm hover:text-white/50 transition-colors"
           >
             Go Back
@@ -82,7 +80,7 @@ export function SettingsPage({ onBack }: Props) {
       {/* Header */}
       <header className="sticky top-0 z-40 backdrop-blur-xl border-b border-white/5 px-4 py-3 flex items-center gap-3" style={{ background: 'rgba(30, 41, 59, 0.9)' }}>
         <button
-          onClick={onBack}
+          onClick={() => navigate('/home')}
           className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center active:bg-white/10"
         >
           <ArrowLeft className="w-5 h-5 text-white" />

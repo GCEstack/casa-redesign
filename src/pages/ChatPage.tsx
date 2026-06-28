@@ -1,20 +1,19 @@
 import { useState, useRef, useEffect } from 'react';
-import type { Character, ConversationMode } from '@/types';
+import { useParams, useNavigate } from 'react-router-dom';
+import type { ConversationMode } from '@/types';
 import { CharacterAvatar } from '@/components/CharacterAvatar';
 import { MicButton } from '@/components/MicButton';
 import { ModeCarousel } from '@/components/ModeCarousel';
 import { SpeechBubble } from '@/components/SpeechBubble';
 import { useVoiceSocket } from '@/hooks/useVoiceSocket';
 import { useKidProfile } from '@/hooks/useKidProfile';
+import { characters } from '@/data/characters';
 import { ArrowLeft, Send, Keyboard, X } from 'lucide-react';
 
-interface Props {
-  character: Character;
-  onBack: () => void;
-  onOpenSettings: () => void;
-}
-
-export function ChatPage({ character, onBack, onOpenSettings }: Props) {
+export function ChatPage() {
+  const { slug } = useParams<{ slug?: string }>();
+  const navigate = useNavigate();
+  const character = characters.find(c => c.slug === (slug || 'pietro')) || characters[0];
   const { voiceState, messages, error, startListening, stopListening, sendTextMessage, clearError } =
     useVoiceSocket(character.slug);
   const { name: kidName, isFirstVisit, continuousSpeech, setName, toggleContinuous } = useKidProfile();
@@ -219,7 +218,7 @@ export function ChatPage({ character, onBack, onOpenSettings }: Props) {
         style={{ background: 'rgba(30, 41, 59, 0.9)' }}
       >
         <button
-          onClick={onBack}
+          onClick={() => navigate('/home')}
           className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center active:bg-white/10 transition-colors"
         >
           <ArrowLeft className="w-5 h-5 text-white" />
@@ -259,7 +258,7 @@ export function ChatPage({ character, onBack, onOpenSettings }: Props) {
         </button>
 
         <button
-          onClick={onOpenSettings}
+          onClick={() => navigate('/settings')}
           className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center active:bg-white/10 transition-colors"
         >
           <span className="text-lg">⚙️</span>

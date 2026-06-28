@@ -1,18 +1,21 @@
 import { Home, MessageCircle, Settings } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
 interface Props {
   active: 'home' | 'chat' | 'settings';
-  onNavigate: (screen: 'home' | 'chat' | 'settings') => void;
   hasChat?: boolean;
 }
 
-export function BottomNav({ active, onNavigate, hasChat }: Props) {
+export function BottomNav({ active, hasChat }: Props) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 flex justify-center">
       <div className="w-full max-w-md bg-black/80 backdrop-blur-xl border-t border-white/10 px-6 py-3 flex items-center justify-around">
         <button
-          onClick={() => onNavigate('home')}
+          onClick={() => navigate('/home')}
           className={cn(
             'flex flex-col items-center gap-1 transition-colors',
             active === 'home' ? 'text-amber-400' : 'text-white/40',
@@ -23,7 +26,7 @@ export function BottomNav({ active, onNavigate, hasChat }: Props) {
         </button>
 
         <button
-          onClick={() => hasChat && onNavigate('chat')}
+          onClick={() => hasChat && navigate(location.pathname.startsWith('/chat') ? location.pathname : '/chat')}
           className={cn(
             'flex flex-col items-center gap-1 transition-colors',
             active === 'chat' ? 'text-amber-400' : 'text-white/40',
@@ -35,7 +38,7 @@ export function BottomNav({ active, onNavigate, hasChat }: Props) {
         </button>
 
         <button
-          onClick={() => onNavigate('settings')}
+          onClick={() => navigate('/settings')}
           className={cn(
             'flex flex-col items-center gap-1 transition-colors',
             active === 'settings' ? 'text-amber-400' : 'text-white/40',
